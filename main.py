@@ -165,10 +165,73 @@ def get_main_keyboard():
         [InlineKeyboardButton(text="👻 Сталкер-хуялкер", callback_data="start_stalker")]
     ])
 
+@dp.message(Command("stalk"))
+async def stalk_command(message: types.Message, state: FSMContext):
+    """Команда /stalk для быстрого запуска сталкера"""
+    user_id = message.from_user.id
+    chat_id = user_data.get(user_id, {}).get('group_chat_id')
+    
+    # Если команда вызвана в группе
+    if message.chat.id != user_id:
+        # Сохраняем ID группы
+        if user_id not in user_data:
+            user_data[user_id] = {}
+        user_data[user_id]['group_chat_id'] = message.chat.id
+        
+        # Удаляем сообщение /stalk из группы
+        try:
+            await bot.delete_message(message.chat.id, message.message_id)
+        except Exception:
+            pass
+            
+        await bot.send_message(user_id, "Для настройки сталкера перейди сюда и нажми /stalk еще раз или используй меню.")
+        return
+        
+    if not chat_id:
+        await message.answer("Сначала нажми /start или /stalk в нужной группе!")
+        return
+    
+    # Проверяем, есть ли у пользователя активная сессия
+    if user_id in user_active_sessions:
+        session_id = user_active_sessions[user_id]
+        if session_id in active_stalker_sessions:
+            # У пользователя есть активная сессия, показываем кнопку стоп
+            session = active_stalker_sessions[session_id]
+            keyboard = InlineKeyboardMarkup(inline_keyboard=[
+                [InlineKeyboardButton(text="🛑 Стоп", callback_data="stalker_stop")]
+            ])
+            
+            remaining_time = max(0, int((session['end_time'] - datetime.now()).total_seconds() / 60))
+            await message.answer(
+                f"У тебя активна сессия отслеживания @{session['nickname']}\n"
+                f"Осталось времени: {remaining_time} минут",
+                reply_markup=keyboard
+            )
+            return
+        else:
+            # Сессия в словаре но её нет в активных, удаляем
+            del user_active_sessions[user_id]
+        
+    # Проверяем количество активных таймеров для этого чата
+    active_in_chat = sum(1 for s in active_stalker_sessions.values() if s['chat_id'] == chat_id)
+    
+    if active_in_chat >= 2:
+        await message.answer("Потише, ковбой, пока все места заняты. Подожди немного.")
+        return
+        
+    await state.set_state(StalkerStates.waiting_for_nickname)
+    await state.update_data(target_chat_id=chat_id)
+    
+    await message.answer("Кого заебать? (укажи никнейм в формате @nickname)")
+
+@dp.callback_query(F.data == "start_stalker")
+async def start_stalker_mode(query: types.CallbackQuery, state: FSMContext):
+    """Начало настройки сталкера или показ кнопки стоп"""
+    user_id = query.from_user.id
     chat_id = user_data.get(user_id, {}).get('group_chat_id')
     
     if not chat_id:
-        await query.message.answer("Сначала нажми /stalk в нужной группе!")
+        await query.message.answer("Сначала нажми /start в нужной группе!")
         await query.answer()
         return
     
@@ -384,9 +447,9 @@ async def check_silence(session_id: str):
 
 # ==================== ОСНОВНЫЕ КОМАНДЫ ============
 
-@dp.message(Command("stalk"))
+@dp.message(Command("start"))
 async def start_command(message: types.Message):
-    """Команда /stalk"""
+    """Команда /start"""
     user_id = message.from_user.id
     chat_id = message.chat.id
     
@@ -397,12 +460,12 @@ async def start_command(message: types.Message):
             user_data[user_id] = {}
         user_data[user_id]['group_chat_id'] = chat_id
         
-        # Удаляем сообщение /stalk из группы
+        # Удаляем сообщение /start из группы
         try:
             await bot.delete_message(chat_id, message.message_id)
-            logger.info(f"Сообщение /stalk удалено из группы {chat_id}")
+            logger.info(f"Сообщение /start удалено из группы {chat_id}")
         except Exception as e:
-            logger.warning(f"Не удалось удалить сообщение /stalk: {e}")
+            logger.warning(f"Не удалось удалить сообщение /start: {e}")
         
         # Отправляем приветствие в ЛС
         await bot.send_message(
@@ -425,7 +488,7 @@ async def help_command(message: types.Message):
     help_text = (
         "📖 **Доступные функции:**\n\n"
         "👻 **Сталкер-хуялкер** - отслеживай и хуифицируй жертву\n\n"
-        "Используй /stalk для начала"
+        "Используй /start для начала"
     )
     await message.answer(help_text, parse_mode="Markdown")
 
