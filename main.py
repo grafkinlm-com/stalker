@@ -2,19 +2,16 @@ import os
 import asyncio
 import random
 import logging
-import requests
 import re
 import pymorphy3
 from pathlib import Path
 from datetime import datetime, timedelta
-from bs4 import BeautifulSoup
 from aiogram import Bot, Dispatcher, types, F
 from aiogram.filters import Command
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
 from aiogram.fsm.storage.memory import MemoryStorage
 from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
-from urllib.parse import quote
 
 # Инициализация морфологического анализатора
 morph = pymorphy3.MorphAnalyzer()
@@ -36,33 +33,6 @@ storage = MemoryStorage()
 dp = Dispatcher(storage=storage)
 
 # ==================== СОСТОЯНИЯ FSM ====================
-
-# Состояния для поиска крайнего
-class ScapegoatStates(StatesGroup):
-    waiting_name = State()
-    waiting_options = State()
-    spinning = State()
-
-# Состояния для порчи на понос
-class PonosOrderStates(StatesGroup):
-    waiting_victim = State()
-    waiting_reason = State()
-    waiting_details = State()
-
-# Состояния для дать в облака
-class CloudsStates(StatesGroup):
-    waiting_username = State()
-
-# Состояния для скачивания трека
-class TrackStates(StatesGroup):
-    waiting_artist = State()
-    waiting_title = State()
-
-# Состояния для Режима Полины
-class PolinaStates(StatesGroup):
-    waiting_username = State()
-    waiting_reason = State()
-
 # Состояния для Сталкера
 class StalkerStates(StatesGroup):
     waiting_for_nickname = State()
@@ -83,18 +53,6 @@ active_stalker_sessions = {}
 user_active_sessions = {}
 
 # ==================== СПИСКИ ФРАЗ ====================
-
-# Варианты способов пукнуть
-FART_METHODS = [
-    "тихо пустил(а) шептуна в лужу",
-    "оподливился(лась)",
-    "дал(а) в облака",
-    "пустил(а) ветра в поле",
-    "сыграл(а) симфонию",
-    "насмешил(а) портки",
-    "забитбоксил(а) попой",
-    "хопхэй лалалэйнул(а)"
-]
 
 # Фразы для режима "Гасим"
 INSULT_PHRASES = [
@@ -204,367 +162,9 @@ def extract_nouns(text: str) -> list:
 def get_main_keyboard():
     """Возвращает клавиатуру с основными функциями"""
     return InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="👹 Найди крайнего", callback_data="scapegoat")],
-        [InlineKeyboardButton(text="💩 Порча на понос", callback_data="ponos_order")],
-        [InlineKeyboardButton(text="💨 Дать в облака", callback_data="clouds")],
-        [InlineKeyboardButton(text="😈 Режим Полины", callback_data="polina_mode")],
-        [InlineKeyboardButton(text="👻 Сталкер-хуялкер", callback_data="start_stalker")],
-        [InlineKeyboardButton(text="🤬 Жалобы на пидарасов", callback_data="complaint")]
+        [InlineKeyboardButton(text="👻 Сталкер-хуялкер", callback_data="start_stalker")]
     ])
 
-# ==================== НАЙДИ КРАЙНЕГО ============
-
-@dp.callback_query(F.data == "scapegoat")
-async def scapegoat_start(query: types.CallbackQuery, state: FSMContext):
-    """Начало поиска крайнего - запрос названия"""
-    user_id = query.from_user.id
-    await state.set_state(ScapegoatStates.waiting_name)
-    
-    # Очищаем старые данные
-    if user_id in user_data:
-        user_data[user_id].pop('scapegoat', None)
-    
-    # Отправляем в ЛС пользователю
-    await bot.send_message(
-        user_id,
-        "Введи название для сеанса (например: 'Кто крайний?'):"
-    )
-    await query.answer()
-
-@dp.message(ScapegoatStates.waiting_name)
-async def scapegoat_name_received(message: types.Message, state: FSMContext):
-    """Получение названия сеанса"""
-    user_id = message.from_user.id
-    
-    if user_id not in user_data:
-        user_data[user_id] = {}
-    
-    user_data[user_id]['scapegoat'] = {
-        'name': message.text,
-        'options': []
-    }
-    
-    await state.set_state(ScapegoatStates.waiting_options)
-    # Отправляем в ЛС
-    await message.answer(
-        "Введи варианты через запятую (например: Вася, Петя, Маша):"
-    )
-
-@dp.message(ScapegoatStates.waiting_options)
-async def scapegoat_options_received(message: types.Message, state: FSMContext):
-    """Получение вариантов"""
-    user_id = message.from_user.id
-    text = message.text.strip()
-    
-    # Парсим варианты через запятую
-    options = [opt.strip() for opt in text.split(',') if opt.strip()]
-    
-    if not options:
-        # Ошибка в ЛС
-        await message.answer("Введи хотя бы один вариант!")
-        return
-    
-    user_data[user_id]['scapegoat']['options'] = options
-    
-    await state.set_state(ScapegoatStates.spinning)
-    await spin_scapegoat(message.from_user.id, state)
-
-async def spin_scapegoat(user_id: int, state: FSMContext):
-    """Запуск поиска крайнего со счётчиком"""
-    scapegoat_data = user_data[user_id]['scapegoat']
-    name = scapegoat_data['name']
-    options = scapegoat_data['options']
-    chat_id = user_data[user_id].get('group_chat_id')
-    
-    # Отправляем счётчик в ЛС
-    spinning_message = await bot.send_message(
-        user_id,
-        "👹 Ищем крайнего...\n\n" + "\n".join([f"{i+1}. {opt}" for i, opt in enumerate(options)])
-    )
-    
-    # Имитируем прокрутку в ЛС
-    for i in range(10):
-        await asyncio.sleep(0.3)
-        random_option = random.choice(options)
-        try:
-            await bot.edit_message_text(
-                f"👹 Ищем крайнего...\n\n**Сейчас выбирается: {random_option}**",
-                user_id,
-                spinning_message.message_id,
-                parse_mode="Markdown"
-            )
-        except:
-            pass
-    
-    # Финальный результат
-    scapegoat = random.choice(options)
-    
-    # Обновляем сообщение в ЛС
-    await bot.edit_message_text(
-        f"✅ Крайний найден!\n\n**Сегодня в {name} побеждает {scapegoat}**",
-        user_id,
-        spinning_message.message_id,
-        parse_mode="Markdown"
-    )
-    
-    # ТОЛЬКО финальный результат отправляем в группу
-    if chat_id:
-        await bot.send_message(
-            chat_id,
-            f"👹 **Сегодня в {name} побеждает {scapegoat}**",
-            parse_mode="Markdown"
-        )
-    
-    await state.clear()
-
-# ==================== ПОРЧА НА ПОНОС ============
-
-@dp.callback_query(F.data == "ponos_order")
-async def ponos_order_start(query: types.CallbackQuery, state: FSMContext):
-    """Начало порчи на понос"""
-    user_id = query.from_user.id
-    await state.set_state(PonosOrderStates.waiting_victim)
-    
-    # Отправляем в ЛС
-    await bot.send_message(
-        user_id,
-        "Введи имя жертвы поноса:"
-    )
-    await query.answer()
-
-@dp.message(PonosOrderStates.waiting_victim)
-async def ponos_victim_received(message: types.Message, state: FSMContext):
-    """Получение имени жертвы"""
-    user_id = message.from_user.id
-    
-    if user_id not in user_data:
-        user_data[user_id] = {}
-    
-    user_data[user_id]['ponos'] = {
-        'victim': message.text,
-        'username': message.from_user.username or message.from_user.first_name
-    }
-    
-    await state.set_state(PonosOrderStates.waiting_reason)
-    # Отправляем в ЛС
-    await message.answer("Почему он/она должен обосраться? (Введи причину)")
-
-@dp.message(PonosOrderStates.waiting_reason)
-async def ponos_reason_received(message: types.Message, state: FSMContext):
-    """Получение причины"""
-    user_id = message.from_user.id
-    
-    user_data[user_id]['ponos']['reason'] = message.text
-    
-    await state.set_state(PonosOrderStates.waiting_details)
-    # Отправляем в ЛС
-    await message.answer("Опиши подробности:")
-
-@dp.message(PonosOrderStates.waiting_details)
-async def ponos_details_received(message: types.Message, state: FSMContext):
-    """Получение подробностей и отправка в чат"""
-    user_id = message.from_user.id
-    
-    user_data[user_id]['ponos']['details'] = message.text
-    
-    # Формируем пост
-    ponos_data = user_data[user_id]['ponos']
-    victim = ponos_data['victim']
-    reason = ponos_data['reason']
-    details = ponos_data['details']
-    username = ponos_data['username']
-    chat_id = user_data[user_id].get('group_chat_id')
-    
-    # Формируем текст с @username
-    username_mention = f"@{username}" if not username.startswith("@") else username
-    
-    post_text = (
-        f"💩 **Пиздец!!** Только что обнаружилось, что {victim} обосрался(лась) "
-        f"при загадочных обстоятельствах: {details}\n\n"
-        f"{username_mention} выдвинул предположение, что это произошло потому, что {reason}"
-    )
-    
-    # ТОЛЬКО финальный результат отправляем в группу
-    if chat_id:
-        await bot.send_message(
-            chat_id,
-            post_text,
-            parse_mode="Markdown"
-        )
-    
-    # Отправляем подтверждение в ЛС
-    await message.answer("✅ Порча выполнена! Пост отправлен в чат.")
-    
-    await state.clear()
-
-# ==================== ДАТЬ В ОБЛАКА ============
-
-@dp.callback_query(F.data == "clouds")
-async def clouds_start(query: types.CallbackQuery, state: FSMContext):
-    """Начало функции дать в облака"""
-    user_id = query.from_user.id
-    await state.set_state(CloudsStates.waiting_username)
-    
-    # Отправляем в ЛС
-    await bot.send_message(
-        user_id,
-        "Введи юзернейм (или имя) того, кто пукнет:"
-    )
-    await query.answer()
-
-@dp.message(CloudsStates.waiting_username)
-async def clouds_username_received(message: types.Message, state: FSMContext):
-    """Получение юзернейма и отправка в чат"""
-    user_id = message.from_user.id
-    username = message.text
-    chat_id = user_data[user_id].get('group_chat_id')
-    
-    # Выбираем случайный способ пукнуть
-    fart_method = random.choice(FART_METHODS)
-    
-    # Формируем сообщение
-    fart_post = f"💨 **{username}** {fart_method}"
-    
-    # ТОЛЬКО финальный результат отправляем в группу
-    if chat_id:
-        await bot.send_message(
-            chat_id,
-            fart_post,
-            parse_mode="Markdown"
-        )
-    
-    # Отправляем подтверждение в ЛС
-    await message.answer("✅ Пост отправлен в чат!")
-    
-    await state.clear()
-
-# ==================== РЕЖИМ ПОЛИНЫ ============
-
-@dp.callback_query(F.data == "polina_mode")
-async def polina_mode_start(query: types.CallbackQuery, state: FSMContext):
-    """Начало Режима Полины"""
-    user_id = query.from_user.id
-    await state.set_state(PolinaStates.waiting_username)
-    
-    # Очищаем старые данные
-    if user_id in user_data:
-        user_data[user_id].pop('polina', None)
-    
-    # Отправляем в ЛС
-    await bot.send_message(
-        user_id,
-        "Введи юзернейм или имя того, кого пошлёшь нахуй:"
-    )
-    await query.answer()
-
-@dp.message(PolinaStates.waiting_username)
-async def polina_username_received(message: types.Message, state: FSMContext):
-    """Получение юзернейма"""
-    user_id = message.from_user.id
-    
-    if user_id not in user_data:
-        user_data[user_id] = {}
-    
-    user_data[user_id]['polina'] = {
-        'username': message.text
-    }
-    
-    await state.set_state(PolinaStates.waiting_reason)
-    await message.answer("Почему его/её пошлёшь нахуй? (Введи причину)")
-
-@dp.message(PolinaStates.waiting_reason)
-async def polina_reason_received(message: types.Message, state: FSMContext):
-    """Получение причины и отправка в чат"""
-    user_id = message.from_user.id
-    
-    user_data[user_id]['polina']['reason'] = message.text
-    
-    # Формируем пост
-    polina_data = user_data[user_id]['polina']
-    username = polina_data['username']
-    reason = polina_data['reason']
-    chat_id = user_data[user_id].get('group_chat_id')
-    
-    post_text = f"😈 **{username}**, иди нахуй! Потому что {reason}"
-    
-    # ТОЛЬКО финальный результат отправляем в группу
-    if chat_id:
-        await bot.send_message(
-            chat_id,
-            post_text,
-            parse_mode="Markdown"
-        )
-    
-    # Отправляем подтверждение в ЛС
-    await message.answer("✅ Послано нахуй! Пост отправлен в чат.")
-    
-    await state.clear()
-
-# ==================== ЖАЛОБЫ НА ПИДАРАСОВ ============
-
-@dp.callback_query(F.data == "complaint")
-async def complaint_start(query: types.CallbackQuery, state: FSMContext):
-    """Начало жалобы на пидарасов"""
-    user_id = query.from_user.id
-    
-    if user_id not in user_data:
-        user_data[user_id] = {}
-    
-    # Отправляем в ЛС
-    await bot.send_message(
-        user_id,
-        "Введи имя пидараса:"
-    )
-    await query.answer()
-
-@dp.message()
-async def complaint_handler(message: types.Message, state: FSMContext):
-    """Обработчик жалоб"""
-    user_id = message.from_user.id
-    
-    # Проверяем, находимся ли мы в процессе жалобы
-    current_state = await state.get_state()
-    if current_state is None:
-        # Это не жалоба, обработаем как обычное сообщение
-        await echo_handler(message)
-        return
-    
-    if current_state == "PolinaStates:waiting_reason":
-        await polina_reason_received(message, state)
-    elif current_state == "PolosOrderStates:waiting_details":
-        await ponos_details_received(message, state)
-    elif current_state == "CloudsStates:waiting_username":
-        await clouds_username_received(message, state)
-    elif current_state == "ScapegoatStates:waiting_options":
-        await scapegoat_options_received(message, state)
-    elif current_state == "ScapegoatStates:waiting_name":
-        await scapegoat_name_received(message, state)
-    elif current_state == "PonosOrderStates:waiting_reason":
-        await ponos_reason_received(message, state)
-    elif current_state == "PonosOrderStates:waiting_victim":
-        await ponos_victim_received(message, state)
-    elif current_state == "StalkerStates:waiting_for_nickname":
-        await process_nickname(message, state)
-    elif current_state == "StalkerStates:waiting_for_duration":
-        await process_duration(message, state)
-    else:
-        # Жалоба на пидарасов
-        if user_id not in user_data:
-            user_data[user_id] = {}
-        
-        user_data[user_id]['complaint'] = {
-            'name': message.text,
-            'cabinet': None
-        }
-        
-        await message.answer("Из какого кабинета этот пидарас?")
-
-# ==================== СТАЛКЕР-ХУЯЛКЕР ============
-
-@dp.callback_query(F.data == "start_stalker")
-async def start_stalker_mode(query: types.CallbackQuery, state: FSMContext):
-    """Начало настройки сталкера или показ кнопки стоп"""
-    user_id = query.from_user.id
     chat_id = user_data.get(user_id, {}).get('group_chat_id')
     
     if not chat_id:
@@ -808,14 +408,14 @@ async def start_command(message: types.Message):
         await bot.send_message(
             user_id,
             f"Привет, {message.from_user.first_name}! 👋\n\n"
-            f"Я бот для дегродских развлечений в этом ебаном чате. Выбери функцию:",
+            f"Выбери функцию:",
             reply_markup=get_main_keyboard()
         )
     else:
         # Если команда в ЛС, просто отправляем меню
         await message.answer(
             f"Привет, {message.from_user.first_name}! 👋\n\n"
-            f"Я бот для дегродских развлечений в этом ебаном чате. Выбери функцию:",
+            f"Выбери функцию:",
             reply_markup=get_main_keyboard()
         )
 
@@ -824,10 +424,6 @@ async def help_command(message: types.Message):
     """Команда /help"""
     help_text = (
         "📖 **Доступные функции:**\n\n"
-        "👹 **Найди крайнего** - создай сеанс и выбери крайнего\n"
-        "💩 **Порча на понос** - напиши смешной пост о ком-то\n"
-        "💨 **Дать в облака** - смешной пост о пуке\n"
-        "😈 **Режим Полины** - пошли кого-то нахуй\n"
         "👻 **Сталкер-хуялкер** - отслеживай и хуифицируй жертву\n\n"
         "Используй /start для начала"
     )
