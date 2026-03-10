@@ -42,7 +42,7 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 # Переменные окружения
-BOT_TOKEN = os.getenv("BOT_TOKEN", "YOUR_BOT_TOKEN_HERE")
+BOT_TOKEN = os.getenv("BOT_TOKEN", "8153806401:AAEG8Km4AZWROOeCDP0NcyuPY6q2BXyg37c")
 
 # Папка для загрузок
 DOWNLOADS_FOLDER = Path("downloads")
