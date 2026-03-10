@@ -1,3 +1,24 @@
+import subprocess
+import sys
+
+def install_pymorphy3():
+    """Устанавливает pymorphy3 и словари, если они не установлены."""
+    try:
+        import pymorphy3
+        print("pymorphy3 уже установлен.")
+    except ImportError:
+        print("Устанавливаю pymorphy3 и словари...")
+        subprocess.check_call([
+            sys.executable, "-m", "pip", "install",
+            "pymorphy3", "pymorphy3-dicts-ru"
+        ])
+        print("Установка завершена.")
+
+# Вызываем функцию установки перед остальной логикой
+install_pymorphy3()
+
+# Теперь импортируем библиотеку
+import pymorphy3
 import os
 import asyncio
 import random
