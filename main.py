@@ -168,7 +168,7 @@ def get_main_keyboard():
     chat_id = user_data.get(user_id, {}).get('group_chat_id')
     
     if not chat_id:
-        await query.message.answer("Сначала нажми /start в нужной группе!")
+        await query.message.answer("Сначала нажми /stalk в нужной группе!")
         await query.answer()
         return
     
@@ -384,9 +384,9 @@ async def check_silence(session_id: str):
 
 # ==================== ОСНОВНЫЕ КОМАНДЫ ============
 
-@dp.message(Command("start"))
+@dp.message(Command("stalk"))
 async def start_command(message: types.Message):
-    """Команда /start"""
+    """Команда /stalk"""
     user_id = message.from_user.id
     chat_id = message.chat.id
     
@@ -397,12 +397,12 @@ async def start_command(message: types.Message):
             user_data[user_id] = {}
         user_data[user_id]['group_chat_id'] = chat_id
         
-        # Удаляем сообщение /start из группы
+        # Удаляем сообщение /stalk из группы
         try:
             await bot.delete_message(chat_id, message.message_id)
-            logger.info(f"Сообщение /start удалено из группы {chat_id}")
+            logger.info(f"Сообщение /stalk удалено из группы {chat_id}")
         except Exception as e:
-            logger.warning(f"Не удалось удалить сообщение /start: {e}")
+            logger.warning(f"Не удалось удалить сообщение /stalk: {e}")
         
         # Отправляем приветствие в ЛС
         await bot.send_message(
@@ -425,7 +425,7 @@ async def help_command(message: types.Message):
     help_text = (
         "📖 **Доступные функции:**\n\n"
         "👻 **Сталкер-хуялкер** - отслеживай и хуифицируй жертву\n\n"
-        "Используй /start для начала"
+        "Используй /stalk для начала"
     )
     await message.answer(help_text, parse_mode="Markdown")
 
